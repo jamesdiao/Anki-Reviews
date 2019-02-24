@@ -2,7 +2,7 @@
 #author: "James Diao"
 #date: "February 23, 2019"
 
-# rsconnect::deployApp('/Users/jamesdiao/Documents/R/AnkiReviews')
+# rsconnect::deployApp('/Users/jamesdiao/Documents/R/Anki-Reviews')
 # https://jamesdiao.shinyapps.io/ankireviews/
 
 #Set working directory to file folder
@@ -101,16 +101,17 @@ ui <- fluidPage(
          #ableOutput("table")
       )
    ),
-   uiOutput("website")
+   p("For methodology and validation info: jamesdiao.com/archives/2019/02/23/anki-reviews")
+   #uiOutput("website")
 )
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
   
-  output$website <- renderUI({
-    tagList("For methodology and validation info:", a("jamesdiao.com/archives/2019/02/23/anki-reviews/", 
-      href="jamesdiao.com/archives/2019/02/23/anki-reviews/"))
-  })
+  #output$website <- renderUI({
+  #  tagList("For methodology and validation info:", a("jamesdiao.com/archives/2019/02/23/anki-reviews/", 
+  #    href="jamesdiao.com/archives/2019/02/23/anki-reviews/"))
+  #})
   
   output$plot <- renderPlotly({
      loadbalancer <- input$loadbalancer == "On"
