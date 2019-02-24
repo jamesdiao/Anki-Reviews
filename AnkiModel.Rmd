@@ -1,0 +1,212 @@
+---
+title: "Modeling Anki Review Load"
+author: "James Diao"
+date: "2/23/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(dplyr)
+require(tidyr)
+require(ggplot2)
+require(plotly)
+require(corrplot)
+require(gganimate)
+require(transformr)
+require(av)
+setwd("/Users/jamesdiao/Documents/R/Anki-Reviews")
+
+#preset <- 6
+if (preset == 1) {
+  sim <- readRDS("baselines/baseline_60_30000_5x_0.1.rds")
+} else if (preset == 2) {
+  sim <- readRDS("baselines/baseline_100_20000_4x_0.2.rds")
+} else if (preset == 3) {
+  sim <- readRDS("baselines/baseline_200_20000_4x_0.0.rds")
+} else if (preset == 4) {
+  sim <- readRDS("baselines/baseline_50_5000_1x_0.5.rds")
+} else if (preset == 5) {
+  sim <- readRDS("baselines/baseline_50_5000_1x_0.3.rds")
+} else if (preset == 6) {
+  sim <- readRDS("baselines/baseline_50_5000_1x_0.1.rds")
+}
+```
+
+## Initialization
+
+```{r params}
+if (preset == 1) {
+  cardsperday <- 60
+  cutoff <- 30000
+  days <- cutoff/cardsperday
+  rlen <- 2*days
+  forget <- 0.10
+} else if (preset == 2) {
+  cardsperday <- 100
+  cutoff <- 20000
+  days <- cutoff/cardsperday
+  rlen <- 4*days
+  forget <- 0.2
+} else if (preset == 3) {
+  cardsperday <- 200
+  cutoff <- 20000
+  days <- cutoff/cardsperday
+  rlen <- 4*days
+  forget <- 0
+} else if (preset == 4) {
+  cardsperday <- 50
+  cutoff <- 5000
+  days <- cutoff/cardsperday
+  rlen <- 300
+  forget <- 0.5
+} else if (preset == 5) {
+  cardsperday <- 50
+  cutoff <- 5000
+  days <- cutoff/cardsperday
+  rlen <- 365
+  forget <- 0.3
+} else if (preset == 6) {
+  cardsperday <- 50
+  cutoff <- 5000
+  days <- cutoff/cardsperday
+  rlen <- 365
+  forget <- 0.1
+} else {
+  cardsperday <- 15
+  cutoff <- 1500
+  days <- cutoff/cardsperday
+  rlen <- 150
+  forget <- 0.1
+}
+```
+
+## Setup
+
+```{r init}
+multiplier <- 2.5
+terminal_interval <- 180
+added_terms = 0
+max_pwr <- floor(log(terminal_interval, base = multiplier))
+intervals <- ceiling(multiplier^(0:max_pwr)) #c(1, 3, 7, 16, 40, 98)
+if (rlen > terminal_interval) 
+  added_terms <- floor((rlen-sum(intervals))/terminal_interval)
+# Cumulative sum of interval gaps (1, 4, 11, ...)
+csintervals <- c(intervals, rep(terminal_interval, added_terms)) %>% cumsum
+# Add even-odd jitter to the cumulative interval after some number (keep)
+# to stabilize stacking effects
+keep <- 5
+n_csint <- length(csintervals)
+csintervals[keep:n_csint] <- csintervals[keep:n_csint] + 
+                             rep(c(0,1),length.out=n_csint-keep+1)
+# Scaling factor for adds
+scaling <- 1 + forget*(sum(days > csintervals)-2)
+# Power series of the forget decay factor (e.g., 1.0, 0.90, 0.81, ...)
+decay_0 <- (1-forget)^(0:length(csintervals))
+```
+
+## Model
+
+```{r ankimodel}
+# Empty vector for number of reviews
+reviews <- rep(0, rlen)
+#rlen <- 1.5*days
+#all_reviews <- rep(0, rlen*(days+1))
+#all_tags <- rep(0:days, each = rlen)
+#all_days <- rep(1:rlen, times = days+1)
+
+for (i in 1:days) {
+  # `range` defines the index of consistently correct cards (2, 5, 12, ...)
+  range <- i + csintervals
+  # Make sure `range` fits inside the `reviews` vector
+  range <- range[range <= rlen]
+  # Make sure `decay` is the same size as `range`
+  decay <- (1-forget)^(0:(length(range)-1))
+  # Add reviews from "perfectly correct" cards initially added on day `i`
+  # graded_scaling <- (1-(days-cut_csint[i]) / days) * (scaling-1) + 1
+  reviews[range] <- reviews[range] + cardsperday * decay * scaling
+  # For each added day (j), add back the series of incorrect cards. 
+  # Assume that none of them are wrong more than twice.
+  
+  for (j in 1:(length(range))) {
+    # `j_range` is the indexes of the series of incorrect cards to add back for each `j`
+    j_range <- range - 1 + range[j]
+    # Make sure `j_range` fits into the `reviews` vector
+    j_range <- j_range[j_range <= rlen]
+    if (length(j_range) == 0) break
+    # Make sure `decay` is the same size as `range`
+    j_decay <- (1-forget)^((j-1):(length(j_range)+j-2))
+    # Add back the series of incorrect cards (2nd term = # of incorrect cards). 
+    reviews[j_range] <- reviews[j_range] + forget*cardsperday*j_decay*scaling #)[j]
+    #if (max(j_range)+1 <= rlen) {
+    #  reviews[j_range+1] <- reviews[j_range+1] + (forget^2*cardsperday) * (1-forget)^(j-1)
+    #}
+  }
+  
+  #start <- i*rlen+1
+  #detrend_days <- (i*2.1):rlen
+  #if (length(detrend_days) > rlen * 0.5) {
+  #  detrend <- lm(reviews[detrend_days] ~ detrend_days) %>% coef
+  #}
+  #entry <- ifelse(1:rlen < i*2.1, reviews, reviews - detrend[2]*rlen)
+  #smoothed_entry <- predict(loess(entry ~ days, 
+  #  data = data.frame(days = 1:length(entry), entry = entry), span = 0.1))
+  #all_reviews[start:(start+rlen-1)] <- entry
+  
+  #reviews <- ifelse(1:rlen < i*2.1, reviews, reviews - detrend[2]*rlen)
+  
+  #if (i %% 10 == 0)
+  #plot(1:rlen,  ifelse(1:rlen < i*2.1, reviews, reviews - detrend[2]*rlen), type = 'l', 
+  #     xlab = "Days", ylab = "Reviews", main = sprintf("Day %s/%s", i, rlen))
+  #points(1:rlen, reviews, type = 'l', col = 'red')
+}
+```
+
+## Post-processing and Cleaning
+
+```{r data_cleaning}
+detrend_days <- (days*2.1):length(reviews)
+if (length(detrend_days) > 300) {
+  detrend <- lm(reviews[detrend_days] ~ detrend_days) %>% coef
+  reviews[detrend_days] <- reviews[detrend_days] - detrend[2]*detrend_days
+}
+
+# Scale review counts to expected max and expected convergence
+#exp_max <- cardsperday*sum(1/(1-forget)^(1:sum(days > csintervals)))
+#exp_converge <- cutoff/terminal_interval * (1 + forget * length(intervals))
+#reviews[csintervals[3]:days] <- reviews[csintervals[3]:days] * exp_max/max(reviews)
+#reviews[(days+1):length(reviews)] <- reviews[(days+1):length(reviews)] * exp_converge/mean(reviews[days:(2*days)])
+
+# Round review counts to integers
+reviews <- reviews %>% round(0)
+# Two-part smoothing process to simulate load balancing
+review_data <- data.frame(Day = 1:length(reviews), estimated = reviews)
+smoothed_1 <- reviews[1:4]
+smoothed_2 <- predict(loess(estimated ~ Day, 
+                      data = review_data[5:nrow(review_data),], 
+                      span = 0.1))
+# Final data frame
+all_data <- data.frame(review_data, 
+                       smoothed = c(smoothed_1, smoothed_2), 
+                       simulated = sim[1:nrow(review_data)])
+```
+
+\newpage
+## Correlation Analysis
+
+```{r corr, eval = F}
+corrs <- cor(all_data[,-1])
+corrplot(corrs, method = "number")
+```
+
+\newpage
+## Plotting
+
+```{r plotting}
+plotdata <- all_data %>% gather(key = "Type", value = "Reviews", -Day) %>% 
+  filter(Type != "smoothed")
+ggplot(plotdata, aes(x=Day, y=Reviews, color=Type)) + geom_line(lwd = 0.8) + 
+  ggtitle("Anki Review Load Over Time") + theme_bw() #+ 
+  #geom_hline(yintercept = c(exp_converge, exp_max), linetype="dashed") #+ 
+  #geom_vline(xintercept = csintervals)
+```

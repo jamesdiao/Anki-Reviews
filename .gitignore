@@ -1,3 +1,7 @@
+baselines/
+deprecated/
+.gitignore
+
 # History files
 .Rhistory
 .Rapp.history
