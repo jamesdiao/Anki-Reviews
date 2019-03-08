@@ -12,6 +12,6 @@ To help people better understand what they're signing up for, or figure out how 
 ### Methodology
 Review counts are computed by forward propagating the expected future reviews generated on each day. To avoid multiple embedded loops, the program only allows a maximum of 2 possible forgetten reviews. Because this constraint underestimates the true number of reviews, each added review count is scaled up by the expected difference. This shortcut greatly decreases the computational cost, but results in some shape distortions away from key points (peak and stable state). A more accurate (but slower and less visual) simulator can be accessed here: [https://repl.it/repls/GlassBiodegradableTriggers](https://repl.it/repls/GlassBiodegradableTriggers). 
 
-For validation data, visit [jamesdiao.com/archives/2019/02/23/anki-reviews](jamesdiao.com/archives/2019/02/23/anki-reviews)
+For validation data, visit [jamesdiao.com/archives/2019/02/23/anki-reviews](http://jamesdiao.com/archives/2019/02/23/anki-reviews)
 
 
